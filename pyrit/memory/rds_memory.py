@@ -3,11 +3,12 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from typing import MutableSequence, Optional, Sequence, TypeVar, Union, Literal
 
-from sqlalchemy import MetaData, create_engine, text
+from sqlalchemy import MetaData, create_engine, text, event
 from sqlalchemy.engine.base import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload, sessionmaker
 from sqlalchemy.orm.session import Session
+from sqlalchemy.schema import CreateSchema
 
 from pyrit.common import default_values
 from pyrit.common.singleton import Singleton
@@ -39,6 +40,7 @@ class RdsSQLMemory(MemoryInterface, metaclass=Singleton):
         *,
         connection_string: Optional[str] = None,
         db_type: DbType = "postgresql",
+        schema_name: Optional[str] = None,
         verbose: bool = False,
     ):
         """
@@ -47,9 +49,11 @@ class RdsSQLMemory(MemoryInterface, metaclass=Singleton):
         Args:
             connection_string: Database connection string
             db_type: Database type, supporting "postgresql", "mysql", or "sqlserver"
+            schema_name: Schema name to use for PostgreSQL (default is "public")
             verbose: Whether to enable verbose logging
         """
         self._db_type = db_type
+        self._schema_name = schema_name
         
         # 所有数据库类型统一使用RDS_CONNECTION_STRING环境变量
         # 连接字符串格式示例:
@@ -63,6 +67,11 @@ class RdsSQLMemory(MemoryInterface, metaclass=Singleton):
 
         self.engine = self._create_engine(has_echo=verbose)
         self.SessionFactory = sessionmaker(bind=self.engine)
+        
+        # 如果指定了schema且数据库类型是PostgreSQL，则创建schema
+        if self._db_type == "postgresql" and self._schema_name is not None:
+            self._create_schema_if_not_exists()
+            
         self._create_tables_if_not_exist()
 
         super().__init__()
@@ -90,19 +99,54 @@ class RdsSQLMemory(MemoryInterface, metaclass=Singleton):
             # Use pool_pre_ping (health check) to gracefully handle server-closed connections
             # by testing and replacing stale connections.
             # Set pool_recycle to 1800 seconds to prevent connections from being closed due to server timeout.
+            
+            # 如果是PostgreSQL且指定了schema，添加search_path参数
+            connect_args = {}
+            if self._db_type == "postgresql" and self._schema_name:
+                connect_args["options"] = f"-c search_path={self._schema_name}"
+            
             engine = create_engine(
                 self._connection_string,
                 pool_recycle=1800,
                 pool_pre_ping=True,
                 echo=has_echo,
                 pool_size=5,
-                max_overflow=10
+                max_overflow=10,
+                connect_args=connect_args
             )
             logger.info(f"Engine created successfully for database: {engine.name} (type: {self._db_type})")
             return engine
         except SQLAlchemyError as e:
             logger.exception(f"Error creating the engine for the database: {e}")
             raise
+    
+    def _create_schema_if_not_exists(self):
+        """
+        Creates a schema in PostgreSQL if it doesn't exist.
+        This is only relevant for PostgreSQL databases.
+        """
+        if not self._schema_name:
+            return
+            
+        with closing(self.get_session()) as session:
+            try:
+                # 检查schema是否存在
+                schema_exists = session.execute(
+                    text(f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = :schema"),
+                    {"schema": self._schema_name}
+                ).scalar() is not None
+                
+                if not schema_exists:
+                    # 创建schema
+                    session.execute(CreateSchema(self._schema_name))
+                    session.commit()
+                    logger.info(f"Created schema '{self._schema_name}' in PostgreSQL database")
+                else:
+                    logger.info(f"Schema '{self._schema_name}' already exists in PostgreSQL database")
+            except SQLAlchemyError as e:
+                session.rollback()
+                logger.exception(f"Error creating schema '{self._schema_name}': {e}")
+                raise
 
     def _create_tables_if_not_exist(self):
         """
@@ -112,8 +156,15 @@ class RdsSQLMemory(MemoryInterface, metaclass=Singleton):
             Exception: If there's an issue creating the tables in the database.
         """
         try:
+            # 为PostgreSQL指定schema
+            if self._db_type == "postgresql" and self._schema_name:
+                # 将所有表的schema设置为指定值
+                for table in Base.metadata.tables.values():
+                    table.schema = self._schema_name
+            
             # Using the 'checkfirst=True' parameter to avoid attempting to recreate existing tables
             Base.metadata.create_all(self.engine, checkfirst=True)
+            logger.info(f"Tables created successfully in database")
         except Exception as e:
             logger.error(f"Error during table creation: {e}")
 

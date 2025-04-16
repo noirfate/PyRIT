@@ -11,8 +11,14 @@ from pyrit.prompt_target import OpenAIChatTarget
 from pyrit.score import SelfAskRefusalScorer
 from pyrit.memory import CentralMemory
 
-# 初始化PyRIT，使用内存数据库
-initialize_pyrit(memory_db_type=RDS)
+# 设置数据库参数
+DB_TYPE = "postgresql"
+SCHEMA_NAME = "pyrit"
+
+
+# 初始化PyRIT，使用RDS数据库并指定数据库类型和schema
+initialize_pyrit(memory_db_type=RDS, db_type=DB_TYPE, schema_name=SCHEMA_NAME)
+
 # 添加memory_labels参数
 memory_labels = {"mytest": "test_jailbreak"}
 
