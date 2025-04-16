@@ -13,6 +13,8 @@ from pyrit.memory import CentralMemory
 
 # 初始化PyRIT，使用内存数据库
 initialize_pyrit(memory_db_type=RDS)
+# 添加memory_labels参数
+memory_labels = {"mytest": "test_jailbreak"}
 
 def load_templates():
     # 加载jailbreak目录下所有的yaml文件
@@ -34,9 +36,10 @@ def load_templates():
 
 def print_db():
     memory = CentralMemory.get_memory_instance()
-    #memory.print_schema()
-    prompts = memory.get_prompt_request_pieces()
-    print(f"找到 {len(prompts)} 个提示")
+    
+    # 获取所有提示
+    prompts = memory.get_prompt_request_pieces(labels=memory_labels)
+    print(f"总共找到 {len(prompts)} 个提示")
 
     # 按照对话ID组织提示和回复
     conversations = {}
@@ -66,8 +69,11 @@ def print_db():
             if piece.role == "assistant":
                 scores = memory.get_scores_by_prompt_ids(prompt_request_response_ids=[str(piece.id)])
                 print(f"  {prompt_text}")
-                print(f"  得分: {scores[0].get_value()}")
-                print(f"  原因: {scores[0].score_rationale}")
+                if scores:
+                    print(f"  得分: {scores[0].get_value()}")
+                    print(f"  原因: {scores[0].score_rationale}")
+                else:
+                    print("  没有找到得分信息")
             else:
                 print(f"  {prompt_text}")
             
@@ -104,7 +110,7 @@ async def main():
                         # 尝试将提示作为参数传递给模板
                         template_value = template.render_template_value(prompt=prompt)
                     except Exception as e:
-                        print(f"渲染模板 {template.name} 失败: {e}")
+                        #print(f"渲染模板 {template.name} 失败: {e}")
                         # 如果渲染失败，直接使用模板值
                         template_value = template.value
                 else:
@@ -135,7 +141,10 @@ async def main():
     
     # 一次性发送所有提示
     print(f"将发送 {len(selected_prompts)} 个提示...")
-    responses = await orchestrator.send_prompts_async(prompt_list=selected_prompts)
+    responses = await orchestrator.send_prompts_async(
+        prompt_list=selected_prompts,
+        memory_labels=memory_labels
+    )
     
     await orchestrator.print_conversations_async()     
     orchestrator.dispose_db_engine()
@@ -143,3 +152,5 @@ async def main():
 # 运行异步主函数
 if __name__ == "__main__":
     asyncio.run(main())
+    print("\n===== 从数据库查询提示记录和标签 =====")
+    print_db()
