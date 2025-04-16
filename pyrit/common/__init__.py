@@ -17,6 +17,7 @@ from pyrit.common.initialization import (
     AZURE_SQL,
     DUCK_DB,
     IN_MEMORY,
+    RDS,
 )
 from pyrit.common.net_utility import get_httpx_client, make_request_and_raise_if_error_async
 from pyrit.common.notebook_utils import is_in_ipython_session
@@ -29,6 +30,7 @@ __all__ = [
     "AZURE_SQL",
     "DUCK_DB",
     "IN_MEMORY",
+    "RDS",
     "combine_dict",
     "combine_list",
     "display_image_response",

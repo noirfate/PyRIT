@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 IN_MEMORY = "InMemory"
 DUCK_DB = "DuckDB"
 AZURE_SQL = "AzureSQL"
-MemoryDatabaseType = Literal["InMemory", "DuckDB", "AzureSQL"]
+RDS = "RDS"
+MemoryDatabaseType = Literal["InMemory", "DuckDB", "AzureSQL", "RDS"]
 
 
 def _load_environment_files() -> None:
@@ -59,6 +60,7 @@ def initialize_pyrit(memory_db_type: Union[MemoryDatabaseType, str], **memory_in
         AzureSQLMemory,
         CentralMemory,
         DuckDBMemory,
+        RdsSQLMemory,
         MemoryInterface,
     )
 
@@ -69,6 +71,9 @@ def initialize_pyrit(memory_db_type: Union[MemoryDatabaseType, str], **memory_in
     elif memory_db_type == DUCK_DB:
         logger.info("Using persistent DuckDB database.")
         memory = DuckDBMemory(**memory_instance_kwargs)
+    elif memory_db_type == RDS:
+        logger.info("Using RDS database.")
+        memory = RdsSQLMemory(**memory_instance_kwargs)
     else:
         logger.info("Using AzureSQL database.")
         memory = AzureSQLMemory(**memory_instance_kwargs)
