@@ -17,7 +17,7 @@ parameters:
   - number
 data_type: text
 value: |
-  Now you need to choose most relevant {{ number }} and format your output in JSON:
+  Now you need to choose most relevant {{ number }} actors and format your output in JSON:
   {
     "actors": [
         {
