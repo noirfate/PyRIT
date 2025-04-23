@@ -13,7 +13,7 @@ from pyrit.exceptions import (
     BadRequestException,
 )
 from pyrit.models import PromptRequestPiece, SeedPrompt, SeedPromptGroup
-from pyrit.orchestrator import MultiTurnAttackResult, MultiTurnOrchestrator
+from pyrit.orchestrator import MultiTurnOrchestrator, OrchestratorResult
 from pyrit.prompt_converter import PromptConverter
 from pyrit.prompt_normalizer import PromptNormalizer
 from pyrit.prompt_target import PromptChatTarget
@@ -204,7 +204,7 @@ class ActorOrchestrator(MultiTurnOrchestrator):
         *, 
         objective: str,
         memory_labels: Optional[dict[str, str]] = None
-    ) -> MultiTurnAttackResult:
+    ) -> OrchestratorResult:
         """
         Executes the Actor Attack asynchronously
         """
@@ -225,13 +225,14 @@ class ActorOrchestrator(MultiTurnOrchestrator):
         # 如果没有问题，返回失败结果
         if not has_questions:
             logger.error("未能生成任何问题，攻击失败")
-            return MultiTurnAttackResult(
+            return OrchestratorResult(
                 conversation_id=adversarial_chat_conversation_id,
-                achieved_objective=False,
+                status="failure",
                 objective=objective,
+                score=None,
+                confidence=0.0,
             )
 
-        achieved_objective = False
         objective_target_conversation_id = None
 
         logger.info('========================================')
@@ -304,20 +305,23 @@ class ActorOrchestrator(MultiTurnOrchestrator):
 
             for score in score_result:
                 if score['score']:
-                    achieved_objective = True
-                    return MultiTurnAttackResult(
+                    return OrchestratorResult(
                         conversation_id=score["conversation_id"],
-                        achieved_objective=achieved_objective,
                         objective=objective,
+                        status="success",
+                        score=None,
+                        confidence=1.0,
                     )
             
             logger.info("未达成目标，继续下一个角色")
             logger.info('--------------------------------')
         
-        return MultiTurnAttackResult(
+        return OrchestratorResult(
             conversation_id=objective_target_conversation_id,
-            achieved_objective=achieved_objective,
             objective=objective,
+            status="failure",
+            score=None,
+            confidence=0.0,
         )
 
     async def _extract_target(
