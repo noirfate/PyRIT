@@ -210,6 +210,17 @@ class ActorOrchestrator(MultiTurnOrchestrator):
         """
         adversarial_chat_conversation_id = str(uuid4())
         
+        #adversarial_chat_system_prompt = self._adversarial_chat_system_seed_prompt.render_template_value(
+        #    objective=objective,
+        #)
+
+        #self._adversarial_chat.set_system_prompt(
+        #    system_prompt=adversarial_chat_system_prompt,
+        #    conversation_id=adversarial_chat_conversation_id,
+        #    orchestrator_identifier=self.get_identifier(),
+        #    labels=memory_labels,
+        #)
+
         pre_attack_result = await self._pre_attack_async(
             objective=objective,
             adversarial_chat_conversation_id=adversarial_chat_conversation_id,
