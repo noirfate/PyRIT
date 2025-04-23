@@ -16,6 +16,7 @@ async def test_actor_orchestrator():
         objective_target=target,
         adversarial_chat=adversarial_chat,
         scoring_target=OpenAIChatTarget(),
+        num_actors=1,
         verbose=True,
     )
 
