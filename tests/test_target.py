@@ -1,7 +1,7 @@
 import pathlib, asyncio
 from pyrit.common import IN_MEMORY, initialize_pyrit
 from pyrit.common.path import DATASETS_PATH
-from pyrit.orchestrator import PromptSendingOrchestrator
+from pyrit.orchestrator import PromptSendingOrchestrator, PromptSSRFOrchestrator
 from pyrit.prompt_target import OpenAIChatTarget
 from pyrit.models import PromptRequestPiece, PromptRequestResponse, SeedPrompt
 import httpx
@@ -64,7 +64,16 @@ async def send_prompt3(target):
         print(f"错误状态码: {e.response.status_code}")
         print(f"错误详情: {e.response.text}")
 
+async def test_ssrf():
+    targets = [get_target2()]
+    orchestrator = PromptSSRFOrchestrator(targets=targets, check_strings=["accessible"])
+    responses = await orchestrator.execute_async()
+    await orchestrator.print_conversations_async()
+    #for response in responses:
+     #   print(response)
+
 async def main():
-    await send_prompt3(get_target2())
+    #await send_prompt3(get_target2())
+    await test_ssrf()
 
 asyncio.run(main())
