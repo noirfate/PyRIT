@@ -4,6 +4,7 @@ from pyrit.common.path import DATASETS_PATH
 from pyrit.orchestrator import PromptSendingOrchestrator
 from pyrit.prompt_target import OpenAIChatTarget
 from pyrit.models import PromptRequestPiece, PromptRequestResponse, SeedPrompt
+import httpx
 
 initialize_pyrit(memory_db_type=IN_MEMORY)
 
@@ -46,7 +47,24 @@ async def send_prompt2(target):
     print(response)
     return response
 
+async def send_prompt3(target):
+    # 测试image_url
+    request_piece = PromptRequestPiece(
+        role="user",
+        original_value_data_type="image_url",
+        original_value="http://127.0.0.1:65535/image.png",
+    )
+    prompt_request = PromptRequestResponse(request_pieces=[request_piece])
+    try:
+        response = await target.send_prompt_async(prompt_request=prompt_request)
+        print(response)
+        return response
+    except httpx.HTTPStatusError as e:
+        #print(f"捕获到HTTP错误: {e}")
+        print(f"错误状态码: {e.response.status_code}")
+        print(f"错误详情: {e.response.text}")
+
 async def main():
-    await send_prompt2(get_target3())
+    await send_prompt3(get_target2())
 
 asyncio.run(main())
