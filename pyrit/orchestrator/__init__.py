@@ -28,6 +28,7 @@ from pyrit.orchestrator.xpia_orchestrator import (
     XPIAOrchestrator,
     XPIATestOrchestrator,
 )
+from pyrit.orchestrator.prompt_ssrf_orchestrator import PromptSSRFOrchestrator
 
 __all__ = [
     "AnecdoctorOrchestrator",
@@ -54,4 +55,5 @@ __all__ = [
     "XPIAOrchestrator",
     "XPIATestOrchestrator",
     "ActorOrchestrator",
+    "PromptSSRFOrchestrator",
 ]
