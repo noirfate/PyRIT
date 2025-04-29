@@ -206,7 +206,11 @@ class OpenAIChatTarget(OpenAIChatTargetBase):
                         prompt_request_piece.converted_value
                     )
                     image_url_entry = {"url": data_base64_encoded_url}
-                    entry = {"type": "image_url", "image_url": image_url_entry}  # type: ignore
+                    entry = {"type": "image_url", "image_url": image_url_entry}
+                    content.append(entry)
+                elif prompt_request_piece.converted_value_data_type == "image_url":
+                    image_url_entry = {"url": prompt_request_piece.converted_value}
+                    entry = {"type": "image_url", "image_url": image_url_entry}
                     content.append(entry)
                 else:
                     raise ValueError(
@@ -300,3 +304,9 @@ class OpenAIChatTarget(OpenAIChatTargetBase):
         for prompt_data_type in converted_prompt_data_types:
             if prompt_data_type not in ["text", "image_path"]:
                 raise ValueError(f"This target only supports text and image_path. Received: {prompt_data_type}.")
+            if prompt_data_type not in ["text", "image_path", "image_url"]:
+                raise ValueError(f"This target only supports text, image_path, image_url. Received: {prompt_data_type}.")
+
+    def is_json_response_supported(self) -> bool:
+        """Indicates that this target supports JSON response format."""
+        return self._is_json_supported
