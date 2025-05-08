@@ -49,11 +49,8 @@ def fetch_chinese_harm_dataset(
             data_type="text",
             name="Chinese Harm Dataset",
             dataset_name="Chinese Harm Dataset",
-            harm_categories=item["categories"],
-            description="""Chinese Harm Dataset is a set of 520 harmful behaviors formulated as instructions. This dataset
-            has been extended to include harm categories for better filtering and analysis. The adversary's goal
-            is instead to find a single attack string that will cause the model to generate any response that
-            attempts to comply with the instruction, and to do so over as many harmful behaviors as possible.""",
+            harm_categories=item["category"],
+            description="""Chinese Harm Dataset is a set of harmful behaviors formulated as instructions.""",
             source="",
         )
         for item in filtered
