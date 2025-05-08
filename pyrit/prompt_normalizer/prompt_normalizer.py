@@ -20,6 +20,7 @@ from pyrit.models.seed_prompt import SeedPromptGroup
 from pyrit.prompt_normalizer import NormalizerRequest, PromptConverterConfiguration
 from pyrit.prompt_target import PromptTarget
 from pyrit.prompt_target.batch_helper import batch_task_async
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,31 @@ class PromptNormalizer(abc.ABC):
                 response_type="text",
                 error="empty",
             )
+
+        except httpx.HTTPStatusError as http_ex:
+            # 确保请求先保存到内存
+            self._memory.add_request_response_to_memory(request=request)
+            
+            # 提取HTTP错误详情
+            error_content = http_ex.response.text
+            try:
+                # 尝试解析JSON错误
+                error_json = http_ex.response.json()
+                error_content = f"{http_ex} - {error_json}"
+            except:
+                error_content = f"{http_ex} - {error_content}"
+                
+            error_response = construct_response_from_request(
+                request=request.request_pieces[0],
+                response_text_pieces=[error_content],
+                response_type="error",
+                error="processing",
+            )
+
+            await self._calc_hash(request=error_response)
+            self._memory.add_request_response_to_memory(request=error_response)
+            cid = request.request_pieces[0].conversation_id if request and request.request_pieces else None
+            raise Exception(f"HTTP错误 (对话ID: {cid}): {error_content}") from http_ex
 
         except Exception as ex:
             # Ensure request to memory before processing exception
