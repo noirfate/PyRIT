@@ -18,6 +18,7 @@ class PanguAgentTarget(PromptTarget):
         self,
         *,
         cookie_str: str,
+        refresh = True,
         max_requests_per_minute: Optional[int] = None,
     ) -> None:
         """
@@ -29,6 +30,8 @@ class PanguAgentTarget(PromptTarget):
             max_requests_per_minute (Optional[int]): Maximum number of requests per minute to allow.
         """
         super().__init__(max_requests_per_minute=max_requests_per_minute)
+        self._refresh = refresh
+        self._conversation_id = None
         self._endpoint = "https://portal.huaweicloud.com/rest/apigw/cdi/rest/cdi/pangudoercoreservice/v1/conversations"
         self.build_cookie(cookie_str)
         self._header = {
@@ -149,17 +152,17 @@ class PanguAgentTarget(PromptTarget):
         final_response_text = ""
 
         try:
-            conversation_id = None
-            with httpx.Client() as client:
-                response = client.post(f'{self._endpoint}/start', headers=self._header, cookies=self.cookies, json=start_payload)
-                response.raise_for_status()
-                conversation_id = response.json()["conversation_id"]
+            if not self._conversation_id or self._refresh:
+                with httpx.Client() as client:
+                    response = client.post(f'{self._endpoint}/start', headers=self._header, cookies=self.cookies, json=start_payload)
+                    response.raise_for_status()
+                    self._conversation_id = response.json()["conversation_id"]
 
             async with httpx.AsyncClient() as client:
                 # Make the POST request with stream=True to handle streaming data
                 async with client.stream(
                     "POST",
-                    f'{self._endpoint}/{conversation_id}/send-message',
+                    f'{self._endpoint}/{self._conversation_id}/send-message',
                     headers=self._header,
                     cookies=self.cookies,
                     json=payload,
