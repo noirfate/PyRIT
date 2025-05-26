@@ -1,4 +1,4 @@
-import pathlib, random
+import pathlib, random, json
 import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 from sqlalchemy import create_engine, text
@@ -34,6 +34,8 @@ class PyritTester():
                     'id', pme.id,
                     'role', pme.role,
                     'categories', pme.prompt_metadata ->> 'categories',
+                    'metadata', pme.prompt_metadata,
+                    'labels', pme.labels,
                     'ori', pme.original_value,
                     'text', pme.converted_value,
                     'score_value', se.score_value,
@@ -54,6 +56,8 @@ class PyritTester():
                     'id', pme.id,
                     'role', pme.role,
                     'categories', pme.prompt_metadata ->> 'categories',
+                    'metadata', pme.prompt_metadata,
+                    'labels', pme.labels,
                     'ori', pme.original_value,
                     'text', pme.converted_value,
                     'score_value', se.score_value,
@@ -622,3 +626,34 @@ class PyritTester():
                 except Exception as e:
                     print(e)
 
+    async def tech_base64(self, datasets, labels):
+        from pyrit.prompt_converter import Base64Converter
+        orchestrator = PromptSendingOrchestrator(
+                objective_target=self._target,
+                prompt_converters=[Base64Converter()],
+                scorers=[self._objective_scorer],
+        )
+        labels["tech"] = "base64"
+        for category in datasets.keys():
+            for prompt in datasets[category]:
+                try:
+                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                except Exception as e:
+                    print(e)
+
+    async def tech_noise(self, datasets, labels, lang=None):
+        from pyrit.prompt_converter import NoiseConverter
+        from pyrit.prompt_converter import TranslationConverter
+        converter = NoiseConverter(converter_target=self._assistant_target)
+        if lang:
+            translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, converter], scorers=[self._objective_scorer])
+        else:
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[converter], scorers=[self._objective_scorer])
+        labels["tech"] = "noise"
+        for category in datasets.keys():
+            for prompt in datasets[category]:
+                try:
+                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                except Exception as e:
+                    print(e)
