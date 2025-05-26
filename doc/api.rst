@@ -253,6 +253,7 @@ API Reference
     OrchestratorResult
     PAIROrchestrator
     PromptSendingOrchestrator
+    QuestionAnsweringBenchmarkOrchestrator
     RedTeamingOrchestrator
     ScoringOrchestrator
     SkeletonKeyOrchestrator
@@ -273,6 +274,7 @@ API Reference
     :toctree: _autosummary/
 
     AddImageTextConverter
+    AddImageVideoConverter
     AddTextImageConverter
     AsciiArtConverter
     AtbashConverter
@@ -280,10 +282,15 @@ API Reference
     AzureSpeechAudioToTextConverter
     AzureSpeechTextToAudioConverter
     Base64Converter
+    BinaryConverter
     CaesarConverter
     CharacterSpaceConverter
+    CharSwapGenerator
     CodeChameleonConverter
+    ColloquialWordswapConverter
     ConverterResult
+    DenylistConverter
+    DiacriticConverter
     EmojiConverter
     FlipConverter
     FuzzerCrossOverConverter
@@ -299,6 +306,7 @@ API Reference
     MathPromptConverter
     MorseConverter
     NoiseConverter
+    PDFConverter
     PersuasionConverter
     PromptConverter
     QRCodeConverter
@@ -309,9 +317,12 @@ API Reference
     StringJoinConverter
     SuffixAppendConverter
     TenseConverter
+    TextToHexConverter
     ToneConverter
+    ToxicSentenceGeneratorConverter
     TranslationConverter
     UnicodeConfusableConverter
+    UnicodeReplacementConverter
     UnicodeSubstitutionConverter
     UrlConverter
     VariationConverter
@@ -381,19 +392,24 @@ API Reference
 
     AzureContentFilterScorer
     ContentClassifierPaths
+    CompositeScorer
     FloatScaleThresholdScorer
     GandalfScorer
     HumanInTheLoopScorer
     HumanInTheLoopScorerGradio
     LikertScalePaths
+    LookBackScorer
     MarkdownInjectionScorer
     PromptShieldScorer
+    QuestionAnswerScorer
     Scorer
+    ScoreAggregator
     SelfAskCategoryScorer
     SelfAskLikertScorer
     SelfAskRefusalScorer
     SelfAskScaleScorer
     SelfAskTrueFalseScorer
+    SelfAskQuestionAnswerScorer
     SubStringScorer
     TrueFalseInverterScorer
     TrueFalseQuestion
