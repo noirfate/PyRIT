@@ -9,6 +9,12 @@ from pyrit.score import (
     FloatScaleThresholdScorer,
     SelfAskScaleScorer,
 )
+from pyrit.models import (
+    PromptRequestResponse,
+    SeedPrompt,
+    SeedPromptGroup,
+)
+from pyrit.prompt_normalizer import PromptConverterConfiguration
 
 class PyritTester():
     def __init__(self, target, assistant_target, db=None):
@@ -34,7 +40,6 @@ class PyritTester():
                     'id', pme.id,
                     'role', pme.role,
                     'categories', pme.prompt_metadata ->> 'categories',
-                    'metadata', pme.prompt_metadata,
                     'labels', pme.labels,
                     'ori', pme.original_value,
                     'text', pme.converted_value,
@@ -56,7 +61,6 @@ class PyritTester():
                     'id', pme.id,
                     'role', pme.role,
                     'categories', pme.prompt_metadata ->> 'categories',
-                    'metadata', pme.prompt_metadata,
                     'labels', pme.labels,
                     'ori', pme.original_value,
                     'text', pme.converted_value,
@@ -69,6 +73,29 @@ class PyritTester():
             ON se.prompt_request_response_id = pme.id AND se.score_type = 'true_false'
         WHERE pme.labels = :labels
         GROUP BY pme.conversation_id;
+        '''
+        self._successful_conversations_sql = '''
+        SELECT 
+            pme.conversation_id,
+            json_agg(
+                json_build_object(
+                    'id', pme.id,
+                    'role', pme.role,
+                    'categories', pme.prompt_metadata ->> 'categories',
+                    'labels', pme.labels,
+			        'sequence', pme.sequence,
+                    'text', pme.converted_value,
+                    'score_id', se.id,
+                    'score_value', se.score_value,
+                    'score_rationale', se.score_rationale
+                ) ORDER BY pme.sequence
+            ) AS conversation_entries
+        FROM pyrit."PromptMemoryEntries" AS pme
+        LEFT JOIN pyrit."ScoreEntries" AS se
+            ON se.prompt_request_response_id = pme.id AND pme.role = 'assistant'
+        WHERE pme.labels @> :labels
+        GROUP BY pme.conversation_id
+        HAVING bool_or(se.score_value = 'True');
         '''
 
     def all_conversations(self, labels):
@@ -179,24 +206,29 @@ class PyritTester():
         return ret
 
     async def base_bench(self, datasets, labels):
-        orchestrator = PromptSendingOrchestrator(objective_target=self._target, scorers=[self._objective_scorer])
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target,  objective_scorer=self._objective_scorer)
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
     async def tech_pku_bench(self, labels):
+        labels["tech"] = "pku_bench"
         await self.base_bench(self.fetch_pku_safe_rlhf_dataset(), labels)
 
     async def tech_librai_bench(self, labels):
+        labels["tech"] = "librai_bench"
         await self.base_bench(self.fetch_librai_datasets(), labels)
 
     async def tech_forbidden_bench(self, labels):
+        labels["tech"] = "forbidden_bench"
         await self.base_bench(self.fetch_forbidden_datasets(), labels)
 
     async def tech_chinese_bench(self, labels, prefix=None):
+        labels["tech"] = "chinese_bench"
         await self.base_bench(self.fetch_chinese_harm_dataset(prefix=prefix), labels)
 
     def load_templates(self):
@@ -232,16 +264,17 @@ class PyritTester():
                     except Exception:
                         pass
 
-        orchestrator = PromptSendingOrchestrator(objective_target=self._target, scorers=[self._objective_scorer])
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, objective_scorer=self._objective_scorer)
         labels["tech"] = "public_jailbreak"
         for category, templates in jailbreak_datasets.items():
             for template, prompts in templates.items():
-                try:
-                    await orchestrator.send_prompts_async(prompt_list=prompts, memory_labels=labels, metadata={'categories': category, 'template': template})
-                except Exception as e:
-                    print(e)
-                    pass
-    
+                for prompt in prompts:
+                    try:
+                        seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, 'template': template})])
+                        await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
+                    except Exception as e:
+                        print(e)
+
     async def tech_fuzzer(self, datasets, labels):
         from pyrit.orchestrator import FuzzerOrchestrator
         from pyrit.prompt_converter import (
@@ -307,11 +340,12 @@ class PyritTester():
         persuasion["misrepresentation"] = PersuasionConverter(converter_target=self._assistant_target, persuasion_technique="misrepresentation")
         labels["tech"] = "persuasion"
         for converter_name, converter in persuasion.items():
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[converter], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
             for category in datasets.keys():
                 for prompt in datasets[category]:
                     try:
-                        await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category, "skill": converter_name})
+                        seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, "skill": converter_name})])
+                        await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                     except Exception as e:
                         print(e)
 
@@ -320,14 +354,15 @@ class PyritTester():
         from pyrit.prompt_converter import TranslationConverter
         if lang:
             translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, LeetspeakConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[translate_converter, LeetspeakConverter()]), objective_scorer=self._objective_scorer)
         else:
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[LeetspeakConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[LeetspeakConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "leetspeak"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
@@ -340,11 +375,12 @@ class PyritTester():
         code_type["length"] = CodeChameleonConverter(encrypt_type="length")
         labels["tech"] = "chameleon"
         for code, converter in code_type.items():
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[converter], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
             for category in datasets.keys():
                 for prompt in datasets[category]:
                     try:
-                        await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category, "type": code})
+                        seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, "type": code})])
+                        await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                     except Exception as e:
                         print(e)
 
@@ -381,16 +417,13 @@ class PyritTester():
     async def tech_translate(self, lang, datasets, labels):
         from pyrit.prompt_converter import TranslationConverter
         converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-        orchestrator = PromptSendingOrchestrator(
-                objective_target=self._target,
-                prompt_converters=[converter],
-                scorers=[self._objective_scorer],
-        )
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
         labels["tech"] = "translate"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
                     pass
@@ -405,25 +438,25 @@ class PyritTester():
             objective_target=self._target,
             adversarial_chat=self._assistant_target,
             role_play_definition_path=RolePlayPaths.MOVIE_SCRIPT.value,
-            scorers=[self._objective_scorer]
+            objective_scorer=self._objective_scorer
         )
         orchestrators["video_game"] = RolePlayOrchestrator(
             objective_target=self._target,
             adversarial_chat=self._assistant_target,
             role_play_definition_path=RolePlayPaths.VIDEO_GAME.value,
-            scorers=[self._objective_scorer]
+            objective_scorer=self._objective_scorer
         )
         orchestrators["trivia_game"] = RolePlayOrchestrator(
             objective_target=self._target,
             adversarial_chat=self._assistant_target,
             role_play_definition_path=RolePlayPaths.TRIVIA_GAME.value,
-            scorers=[self._objective_scorer]
+            objective_scorer=self._objective_scorer
         )
         orchestrators["persuasion"] = RolePlayOrchestrator(
             objective_target=self._target,
             adversarial_chat=self._assistant_target,
             role_play_definition_path=RolePlayPaths.PERSUASION_SCRIPT.value,
-            scorers=[self._objective_scorer]
+            objective_scorer=self._objective_scorer
         )
 
         labels["tech"] = "roleplay"
@@ -431,24 +464,25 @@ class PyritTester():
             for prompt in datasets[category]:
                 for orchestrator_type, orchestrator in orchestrators.items():
                     try:
-                        await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category, 'type': orchestrator_type})
+                        seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, 'type': orchestrator_type})])
+                        await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                     except Exception as e:
                         print(e)
-                        pass
 
     async def tech_asciiart(self, datasets, labels, lang=None):
         from pyrit.prompt_converter import AsciiArtConverter
         from pyrit.prompt_converter import TranslationConverter
         if lang:
             translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, AsciiArtConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[translate_converter, AsciiArtConverter()]), objective_scorer=self._objective_scorer)
         else:
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[AsciiArtConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[AsciiArtConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "asciiart"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
@@ -457,14 +491,15 @@ class PyritTester():
         from pyrit.prompt_converter import TranslationConverter
         if lang:
             translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, EmojiConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[translate_converter, EmojiConverter()]), objective_scorer=self._objective_scorer)
         else:
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[EmojiConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[EmojiConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "emoji"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
@@ -474,27 +509,31 @@ class PyritTester():
             SneakyBitsSmugglerConverter,
             VariationSelectorSmugglerConverter,
         )
-        ascii_orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[AsciiSmugglerConverter()], scorers=[self._objective_scorer])
-        sneaky_orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[SneakyBitsSmugglerConverter()], scorers=[self._objective_scorer])
-        variation_orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[VariationSelectorSmugglerConverter()], scorers=[self._objective_scorer])
+        ascii_orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[AsciiSmugglerConverter()]), objective_scorer=self._objective_scorer)
+        sneaky_orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[SneakyBitsSmugglerConverter()]), objective_scorer=self._objective_scorer)
+        variation_orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[VariationSelectorSmugglerConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "smuggle"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await ascii_orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category, 'type': 'ascii'})
-                    await sneaky_orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category, 'type': 'sneaky'})
-                    await variation_orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category, 'type': 'variation'})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, 'type': 'ascii'})])
+                    await ascii_orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, 'type': 'sneaky'})])
+                    await sneaky_orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category, 'type': 'variation'})])
+                    await variation_orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
     async def tech_manyshot(self, datasets, labels, examples=10):
         from pyrit.orchestrator.single_turn.many_shot_jailbreak_orchestrator import ManyShotJailbreakOrchestrator
-        orchestrator = ManyShotJailbreakOrchestrator(objective_target=self._target, example_count=examples, scorers=[self._objective_scorer])
+        orchestrator = ManyShotJailbreakOrchestrator(objective_target=self._target, example_count=examples, objective_scorer=self._objective_scorer)
         labels["tech"] = "manyshot"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
@@ -534,32 +573,26 @@ class PyritTester():
     async def tech_math(self, datasets, labels):
         from pyrit.prompt_converter import MathPromptConverter
         converter = MathPromptConverter(converter_target=self._assistant_target)
-        orchestrator = PromptSendingOrchestrator(
-                objective_target=self._target,
-                prompt_converters=[converter],
-                scorers=[self._objective_scorer],
-        )
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
         labels["tech"] = "math"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
     async def tech_tense(self, datasets, labels):
         from pyrit.prompt_converter import TenseConverter
         converter = TenseConverter(converter_target=self._assistant_target, tense="past")
-        orchestrator = PromptSendingOrchestrator(
-                objective_target=self._target,
-                prompt_converters=[converter],
-                scorers=[self._objective_scorer],
-        )
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
         labels["tech"] = "tense"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
@@ -568,29 +601,27 @@ class PyritTester():
         from pyrit.prompt_converter import TranslationConverter
         if lang:
             translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, UnicodeConfusableConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[translate_converter, UnicodeConfusableConverter()]), objective_scorer=self._objective_scorer)
         else:
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[UnicodeConfusableConverter()], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[UnicodeConfusableConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "homoglyph"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
     async def tech_flip(self, datasets, labels):
         from pyrit.prompt_converter import FlipConverter
-        orchestrator = PromptSendingOrchestrator(
-                objective_target=self._target,
-                prompt_converters=[FlipConverter()],
-                scorers=[self._objective_scorer],
-        )
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[FlipConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "flip"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
@@ -600,60 +631,58 @@ class PyritTester():
         converter = VariationConverter(converter_target=self._assistant_target)
         if lang:
             translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, converter], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[translate_converter, converter]), objective_scorer=self._objective_scorer)
         else:
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[converter], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
         labels["tech"] = "variation"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
     async def tech_zalgo(self, datasets, labels):
         from pyrit.prompt_converter import ZalgoConverter
-        orchestrator = PromptSendingOrchestrator(
-                objective_target=self._target,
-                prompt_converters=[ZalgoConverter()],
-                scorers=[self._objective_scorer],
-        )
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[ZalgoConverter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "zalgo"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
 
     async def tech_base64(self, datasets, labels):
         from pyrit.prompt_converter import Base64Converter
-        orchestrator = PromptSendingOrchestrator(
-                objective_target=self._target,
-                prompt_converters=[Base64Converter()],
-                scorers=[self._objective_scorer],
-        )
+        orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[Base64Converter()]), objective_scorer=self._objective_scorer)
         labels["tech"] = "base64"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
-
+                import sys
+                sys.exit(1)
+                
     async def tech_noise(self, datasets, labels, lang=None):
         from pyrit.prompt_converter import NoiseConverter
         from pyrit.prompt_converter import TranslationConverter
         converter = NoiseConverter(converter_target=self._assistant_target)
         if lang:
             translate_converter = TranslationConverter(converter_target=self._assistant_target, language=lang)
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[translate_converter, converter], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[translate_converter, converter]), objective_scorer=self._objective_scorer)
         else:
-            orchestrator = PromptSendingOrchestrator(objective_target=self._target, prompt_converters=[converter], scorers=[self._objective_scorer])
+            orchestrator = PromptSendingOrchestrator(objective_target=self._target, request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]), objective_scorer=self._objective_scorer)
         labels["tech"] = "noise"
         for category in datasets.keys():
             for prompt in datasets[category]:
                 try:
-                    await orchestrator.send_prompts_async(prompt_list=[prompt], memory_labels=labels, metadata={'categories': category})
+                    seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=prompt, data_type="text", metadata={'categories': category})])
+                    await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)

@@ -240,7 +240,7 @@ class ActorOrchestrator(MultiTurnOrchestrator):
                 conversation_id=adversarial_chat_conversation_id,
                 status="failure",
                 objective=objective,
-                score=None,
+                objective_score=None,
                 confidence=0.0,
             )
 
@@ -320,7 +320,7 @@ class ActorOrchestrator(MultiTurnOrchestrator):
                         conversation_id=score["conversation_id"],
                         objective=objective,
                         status="success",
-                        score=None,
+                        objective_score=None,
                         confidence=1.0,
                     )
             
@@ -331,7 +331,7 @@ class ActorOrchestrator(MultiTurnOrchestrator):
             conversation_id=objective_target_conversation_id,
             objective=objective,
             status="failure",
-            score=None,
+            objective_score=None,
             confidence=0.0,
         )
 
