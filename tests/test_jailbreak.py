@@ -109,15 +109,8 @@ objective_scorer = FloatScaleThresholdScorer(
     threshold=0.7,
 )
 
-refusal_scorer = SelfAskRefusalScorer(chat_target=OpenAIChatTarget())
-
-scorers = [
-    objective_scorer,
-    refusal_scorer,
-]
-
 # 创建PromptSendingOrchestrator
-orchestrator = PromptSendingOrchestrator(objective_target=target, scorers=scorers)
+orchestrator = PromptSendingOrchestrator(objective_target=target, objective_scorer=objective_scorer)
 
 # 创建异步主函数
 async def main():
@@ -168,12 +161,13 @@ async def main():
     
     # 一次性发送所有提示
     print(f"将发送 {len(selected_prompts)} 个提示...")
-    responses = await orchestrator.send_prompts_async(
-        prompt_list=selected_prompts,
+    responses = await orchestrator.run_attacks_async(
+        objectives=selected_prompts,
         memory_labels=memory_labels
     )
     
-    await orchestrator.print_conversations_async()     
+    for response in responses:
+        await response.print_conversation_async()
     orchestrator.dispose_db_engine()
 
 # 运行异步主函数

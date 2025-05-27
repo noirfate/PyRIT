@@ -7,7 +7,7 @@ import pathlib
 from typing import Optional
 
 from pyrit.common.path import DATASETS_PATH
-from pyrit.models import PromptRequestResponse, SeedPromptDataset
+from pyrit.models import PromptRequestResponse, SeedPromptDataset, SeedPromptGroup
 from pyrit.orchestrator import OrchestratorResult, PromptSendingOrchestrator
 from pyrit.prompt_converter import LLMGenericTextConverter
 from pyrit.prompt_normalizer import PromptConverterConfiguration
@@ -99,12 +99,14 @@ class RolePlayOrchestrator(PromptSendingOrchestrator):
         self,
         *,
         objective: str,
+        seed_prompt: SeedPromptGroup = None,
         memory_labels: Optional[dict[str, str]] = None,
     ) -> OrchestratorResult:
 
         prepended_conversation = await self._get_conversation_start(objective=objective)
         return await super().run_attack_async(
             objective=objective,
+            seed_prompt=seed_prompt,
             prepended_conversation=prepended_conversation,
             memory_labels=memory_labels,
         )
@@ -113,10 +115,12 @@ class RolePlayOrchestrator(PromptSendingOrchestrator):
         self,
         *,
         objectives: list[str],
+        seed_prompts: Optional[list[SeedPromptGroup]] = None,
         memory_labels: Optional[dict[str, str]] = None,
     ) -> list[OrchestratorResult]:
         return await super()._run_attacks_with_only_objectives_async(
             objectives=objectives,
+            seed_prompts=seed_prompts,
             memory_labels=memory_labels,
         )
 

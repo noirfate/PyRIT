@@ -14,6 +14,7 @@ from pyrit.prompt_converter import (
 )
 from pyrit.prompt_target import OpenAIChatTarget
 from pyrit.score import SelfAskRefusalScorer
+from pyrit.prompt_normalizer import PromptConverterConfiguration
 
 async def test_converters():
     """分别测试每个converter的效果"""
@@ -56,22 +57,22 @@ async def test_converters():
             # 创建一个专用的orchestrator
             orchestrator = PromptSendingOrchestrator(
                 objective_target=target,
-                prompt_converters=[converter],  # 只使用单个转换器
-                scorers=[SelfAskRefusalScorer(chat_target=OpenAIChatTarget())],
-                verbose=True
+                request_converter_configurations=PromptConverterConfiguration.from_converters(converters=[converter]),
+                objective_scorer=SelfAskRefusalScorer(chat_target=OpenAIChatTarget()),
             )
             
             try:
                 # 发送prompt并获取响应
                 print(f"使用 {type(converter).__name__} 处理提示...")
-                responses = await orchestrator.send_prompts_async(
-                    prompt_list=prompts,
+                responses = await orchestrator.run_attacks_async(
+                    objectives=prompts,
                     memory_labels={"test_type": "single_converter", "converter": type(converter).__name__}
                 )
                 
                 # 打印转换后的对话
                 print(f"✓ {type(converter).__name__} 测试成功")
-                await orchestrator.print_conversations_async()
+                for response in responses:
+                    await response.print_conversation_async()
                 
             except Exception as e:
                 print(f"✗ {type(converter).__name__} 测试失败: {e}")

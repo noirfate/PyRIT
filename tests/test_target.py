@@ -32,8 +32,8 @@ def get_target3():
 async def send_prompt1(target):
     # 使用Orchestrator发送请求
     orchestrator = PromptSendingOrchestrator(objective_target=target)
-    response = await orchestrator.send_prompts_async(prompt_list=[jailbreak_prompt])
-    await orchestrator.print_conversations_async()
+    response = await orchestrator.run_attack_async(objective=jailbreak_prompt)
+    await response.print_conversation_async()
     return response
 
 async def send_prompt2(target):
@@ -73,7 +73,7 @@ async def test_ssrf():
      #   print(response)
 
 async def main():
-    #await send_prompt3(get_target2())
+    #await send_prompt1(get_target2())
     await test_ssrf()
 
 asyncio.run(main())

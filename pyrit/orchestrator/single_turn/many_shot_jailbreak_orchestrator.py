@@ -89,12 +89,16 @@ class ManyShotJailbreakOrchestrator(PromptSendingOrchestrator):
         self,
         *,
         objective: str,
+        seed_prompt: SeedPromptGroup = None,
         memory_labels: Optional[dict[str, str]] = None,
     ) -> OrchestratorResult:
 
         many_shot_prompt = self._template.render_template_value(prompt=objective, examples=self._examples)
 
-        seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=many_shot_prompt, data_type="text")])
+        if not seed_prompt:
+            seed_prompt = SeedPromptGroup(prompts=[SeedPrompt(value=many_shot_prompt, data_type="text")])
+        else:
+            seed_prompt.prompts[0].value = many_shot_prompt
 
         return await super().run_attack_async(
             objective=objective,
