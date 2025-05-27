@@ -666,9 +666,7 @@ class PyritTester():
                     await orchestrator.run_attack_async(objective=prompt, seed_prompt=seed_prompt, memory_labels=labels)
                 except Exception as e:
                     print(e)
-                import sys
-                sys.exit(1)
-                
+
     async def tech_noise(self, datasets, labels, lang=None):
         from pyrit.prompt_converter import NoiseConverter
         from pyrit.prompt_converter import TranslationConverter
