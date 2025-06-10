@@ -66,9 +66,8 @@ class BinaryConverter(WordLevelConverter):
     async def convert_word_async(self, word: str) -> str:
         """Converts each character in the word to its binary representation."""
         bits = self.bits_per_char.value
-        return " ".join(format(ord(char), f"0{bits}b") for char in word)
-
-    def join_words(self, words: list[str]) -> str:
-        """Joins the converted words with the binary representation of a space."""
-        space_binary = format(ord(" "), f"0{self.bits_per_char.value}b")
-        return f" {space_binary} ".join(words)
+        # Convert each character in the word to its binary representation
+        binary_parts = []
+        for char in word:
+            binary_parts.append(format(ord(char), f"0{bits}b"))
+        return " ".join(binary_parts)

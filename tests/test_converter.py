@@ -40,7 +40,7 @@ async def test_converters():
         EmojiConverter(),
         ROT13Converter(),
         AsciiArtConverter(),
-        BinaryConverter()
+        BinaryConverter(bits_per_char=BinaryConverter.BitsPerChar.BITS_8)
     ]
     
     # 创建测试prompt列表
