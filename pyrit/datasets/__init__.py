@@ -23,6 +23,7 @@ from pyrit.datasets.tdc23_redteaming_dataset import fetch_tdc23_redteaming_datas
 from pyrit.datasets.wmdp_dataset import fetch_wmdp_dataset
 from pyrit.datasets.xstest_dataset import fetch_xstest_dataset
 from pyrit.datasets.chinese_harm_dataset import fetch_chinese_harm_dataset
+from pyrit.datasets.fetch_equitymedqa_dataset import fetch_equitymedqa_dataset_unique_values
 
 __all__ = [
     "fetch_adv_bench_dataset",
@@ -31,6 +32,7 @@ __all__ = [
     "fetch_darkbench_dataset",
     "fetch_multilingual_vulnerability_dataset",
     "fetch_decoding_trust_stereotypes_dataset",
+    "fetch_equitymedqa_dataset_unique_values",
     "fetch_examples",
     "fetch_forbidden_questions_dataset",
     "fetch_harmbench_dataset",
