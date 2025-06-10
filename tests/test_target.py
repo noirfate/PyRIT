@@ -2,7 +2,7 @@ import pathlib, asyncio
 from pyrit.common import IN_MEMORY, initialize_pyrit
 from pyrit.common.path import DATASETS_PATH
 from pyrit.orchestrator import PromptSendingOrchestrator, PromptSSRFOrchestrator
-from pyrit.prompt_target import OpenAIChatTarget
+from pyrit.prompt_target import OpenAIChatTarget, CodeArtsSnapTarget
 from pyrit.models import PromptRequestPiece, PromptRequestResponse, SeedPrompt
 import httpx
 
@@ -27,6 +27,10 @@ def get_target2():
 def get_target3():
     # 使用超时
     target = OpenAIChatTarget(httpx_client_kwargs={"timeout": 1})
+    return target
+
+def get_target4():
+    target = CodeArtsSnapTarget()
     return target
 
 async def send_prompt1(target):
@@ -73,7 +77,7 @@ async def test_ssrf():
      #   print(response)
 
 async def main():
-    #await send_prompt1(get_target2())
-    await test_ssrf()
+    await send_prompt1(get_target4())
+    #await test_ssrf()
 
 asyncio.run(main())

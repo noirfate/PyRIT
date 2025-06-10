@@ -28,6 +28,7 @@ from pyrit.prompt_target.playwright_target import PlaywrightTarget
 from pyrit.prompt_target.prompt_shield_target import PromptShieldTarget
 from pyrit.prompt_target.text_target import TextTarget
 from pyrit.prompt_target.pangu_target import PanguAgentTarget
+from pyrit.prompt_target.codearts_snap_target import CodeArtsSnapTarget
 
 __all__ = [
     "AzureBlobStorageTarget",
@@ -53,5 +54,6 @@ __all__ = [
     "PromptTarget",
     "RealtimeTarget",
     "TextTarget",
-    "PanguAgentTarget"
+    "PanguAgentTarget",
+    "CodeArtsSnapTarget",
 ]
